@@ -2,31 +2,25 @@
 session_start();
 include 'db.php';
 
-// Tentukan durasi sesi dalam detik (5 menit)
+// Timeout Session
 $timeout_duration = 120;
-
-// Cek timeout sesi
 if (isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY']) > $timeout_duration) {
     session_unset();
     session_destroy();
-    setcookie(session_name(), '', time() - 3600, '/');
     header("Location: index.php?timeout=true");
     exit();
 }
-
-// Update waktu terakhir aktivitas
 $_SESSION['LAST_ACTIVITY'] = time();
 
-// Cek apakah session sudah terisi dengan benar
+// Cek session
 if (!isset($_SESSION['username']) || $_SESSION['role'] != 'user') {
     header("Location: index.php");
     exit();
 }
 
-// Ambil data user berdasarkan username
+// Ambil data user
 $user_query = $conn->query("SELECT * FROM users WHERE username = '" . $_SESSION['username'] . "'");
 $user_data = $user_query->fetch_assoc();
-
 if (!$user_data) {
     session_unset();
     session_destroy();
@@ -34,9 +28,14 @@ if (!$user_data) {
     exit();
 }
 
-// Ambil peserta berdasarkan kelas user
+// Pencarian peserta kelas
 $kelas = $user_data['kelas'];
-$peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas = '$kelas'");
+$search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
+$search_query = $search ? "AND nama LIKE '%$search%'" : '';
+$peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas = '$kelas' $search_query");
+
+// Deteksi apakah halaman sedang menggunakan pencarian
+$is_searching = !empty($search);
 ?>
 
 <!DOCTYPE html>
@@ -46,7 +45,6 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Peserta Kelas</title>
     <style>
-        /* Global Styles */
         * {
             margin: 0;
             padding: 0;
@@ -59,30 +57,27 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
             min-height: 100vh;
             background: url('th.jpg') no-repeat center center fixed;
             background-size: cover;
-            animation: fadeIn 1s ease-out;
+            <?php if (!$is_searching): ?> /* Animasi hanya jika bukan pencarian */
+            opacity: 0;
+            animation: fadeIn 1.5s forwards;
+            <?php endif; ?>
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            0% { opacity: 0; }
+            100% { opacity: 1; }
         }
 
         .overlay {
             position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(3px);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
             z-index: -1;
         }
 
-        /* Sidebar */
         .sidebar {
             width: 260px;
             background: linear-gradient(to bottom right, #cdeac0, #6b8e65);
@@ -91,12 +86,12 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
             position: fixed;
             top: 0;
             left: 0;
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
-            color: white;
+            animation: fadeIn 1s ease-out;
         }
 
-        .sidebar h2 {
+        .sidebar h3 {
             text-align: center;
+            color: #4e6f47;
             margin-bottom: 20px;
         }
 
@@ -105,18 +100,18 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
             padding: 12px;
             margin: 10px 0;
             text-decoration: none;
-            color: white;
+            color: #555;
+            background: #e8f5e9;
             border-radius: 8px;
             text-align: center;
-            background: rgba(255, 255, 255, 0.2);
             transition: all 0.3s;
         }
 
         .sidebar a:hover {
             background: linear-gradient(to right, #6b8e65, #4e6f47);
+            color: #fff;
         }
 
-        /* Header */
         .header {
             background: linear-gradient(to right, #6b8e65, #4e6f47);
             position: fixed;
@@ -128,59 +123,69 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            animation: fadeIn 1s ease-out;
         }
 
-        /* Main Content */
         .main-content {
             width: 70%;
             margin-left: 330px;
             margin-top: 80px;
-            padding: 30px;
-            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-            animation: fadeIn 1s ease-out;
-        }
-
-        .main-content h2{
-            color: #4e6f47;
-            text-align: center;
-            margin-bottom: 20px;
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
         }
 
         h2 {
-            color:rgb(255, 255, 255);
+            text-align: center;
+            color: #4e6f47;
+            margin-bottom: 20px;
+        }
+
+        form {
             text-align: center;
             margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            padding: 10px;
+            width: 50%;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            transition: box-shadow 0.3s ease;
+        }
+
+        button {
+            padding: 10px 15px;
+            background: #6b8e65;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 10px;
         }
 
-        table th, table td {
+        th, td {
             border: 1px solid #ddd;
-            padding: 12px;
+            padding: 10px;
             text-align: center;
-            font-size: 14px;
         }
 
-        table th {
+        th {
             background: #6b8e65;
             color: white;
         }
 
-        table tr:nth-child(even) {
-            background: #f9f9f9;
+        p.message {
+            text-align: center;
+            color: #4e6f47;
+            font-weight: bold;
         }
 
-        table tr:hover {
-            background: #e8f5e9;
-        }
     </style>
 </head>
 <body>
@@ -188,7 +193,7 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
 
     <!-- Sidebar -->
     <div class="sidebar">
-        <h2>Menu</h2>
+        <h3>Menu</h3>
         <a href="dashboard_user.php">🏠 Dashboard</a>
         <a href="jadwal.php">📅 Jadwal</a>
         <a href="tugas.php">📝 Tugas</a>
@@ -198,12 +203,23 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
 
     <!-- Header -->
     <div class="header">
-        <h2>Peserta Kelas</h2>
+        <h1>Peserta Kelas</h1>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
         <h2>Peserta Kelas - <?php echo htmlspecialchars($user_data['kelas']); ?></h2>
+
+        <!-- Form Pencarian -->
+        <form method="GET">
+            <input type="text" name="search" placeholder="Cari Nama Peserta..." value="<?php echo htmlspecialchars($search); ?>">
+            <button type="submit">🔍 Cari</button>
+        </form>
+
+        <?php if ($is_searching): ?>
+            <p class="message">Hasil pencarian untuk: "<?php echo htmlspecialchars($search); ?>"</p>
+        <?php endif; ?>
+
         <?php if ($peserta_query->num_rows > 0): ?>
             <table>
                 <thead>
@@ -226,7 +242,7 @@ $peserta_query = $conn->query("SELECT nama, gender, email FROM siswa WHERE kelas
                 </tbody>
             </table>
         <?php else: ?>
-            <p style="text-align: center;">Belum ada peserta dalam kelas Anda.</p>
+            <p class="message">Peserta tidak ditemukan. Coba kata kunci lain.</p>
         <?php endif; ?>
     </div>
 </body>
